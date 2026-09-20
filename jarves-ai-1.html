@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Jarves AI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #070a10;
+    --bg2: #0c1119;
+    --panel: #10161f;
+    --panel-active: #16202c;
+    --line: #1c2530;
+    --cyan: #45d9e8;
+    --cyan-dim: #1e5a63;
+    --text: #dfe8ee;
+    --text-dim: #7b8a99;
+    --danger: #e2545a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(600px 400px at 50% -10%, rgba(69,217,232,0.10), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex;
+    flex-direction:column;
+    height:calc(var(--vh, 1vh) * 100);
+    overflow:hidden;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+
+  #lock, #chat{ display:none; }
+
+  /* ---------- Shared screen ---------- */
+  #lock{
+    flex:1;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:32px 24px;
+    text-align:center;
+    gap:22px;
+  }
+  .mark{
+    width:64px; height:64px;
+    border-radius:18px;
+    background:linear-gradient(160deg, var(--cyan-dim), #0a1015);
+    border:1px solid rgba(69,217,232,0.35);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 30px rgba(69,217,232,0.18);
+    flex-shrink:0;
+  }
+  .mark svg{width:30px; height:30px;}
+  h1{ font-size:22px; margin:0; letter-spacing:0.2px; font-weight:600; }
+  .sub{ color:var(--text-dim); font-size:14.5px; line-height:1.5; max-width:320px; margin:0; }
+  .field{ width:100%; max-width:340px; text-align:left; }
+  .field label{ display:block; font-size:12.5px; color:var(--text-dim); margin-bottom:6px; }
+  input[type="password"], input[type="text"]{
+    width:100%; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:14px; color:var(--text); font-size:15px; outline:none;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  input:focus{ border-color: var(--cyan); }
+  .btn{
+    width:100%; max-width:340px; background:var(--cyan); color:#04141a; border:none;
+    border-radius:12px; padding:14px; font-size:15.5px; font-weight:700; cursor:pointer;
+  }
+  .btn:disabled{ opacity:0.4; }
+  .btn.secondary{ background:transparent; color:var(--text-dim); border:1px solid var(--line); font-weight:500; }
+  .btn.small{ padding:10px; font-size:14px; }
+  .hint{ font-size:12px; color:var(--text-dim); max-width:320px; line-height:1.5; }
+  .hint a{ color:var(--cyan); text-decoration:none; }
+
+  /* ---------- Lock ---------- */
+  #lock .lock-title{ font-size:16px; color:var(--text-dim); }
+  .pin-dots{ display:flex; gap:16px; }
+  .pin-dots span{
+    width:14px; height:14px; border-radius:50%; border:1.5px solid var(--line);
+    background:transparent; transition:background 0.15s, border-color 0.15s;
+  }
+  .pin-dots span.filled{ background:var(--cyan); border-color:var(--cyan); }
+  .pin-dots.shake{ animation:shake 0.4s; }
+  @keyframes shake{
+    0%,100%{ transform:translateX(0); } 20%{ transform:translateX(-10px); }
+    40%{ transform:translateX(10px); } 60%{ transform:translateX(-8px); } 80%{ transform:translateX(8px); }
+  }
+  #lockError{ color:var(--danger); font-size:12.5px; height:16px; }
+  .keypad{ display:grid; grid-template-columns:repeat(3, 68px); gap:16px; }
+  .keypad button{
+    width:68px; height:68px; border-radius:50%; background:var(--panel); border:1px solid var(--line);
+    color:var(--text); font-size:22px; font-weight:500;
+  }
+  .keypad button:active{ background:var(--line); }
+  .keypad .empty{ background:none; border:none; }
+  .keypad .keyback{ font-size:18px; color:var(--text-dim); background:none; border:none; }
+  #fingerprintBtn{
+    display:none; flex-direction:column; align-items:center; gap:6px;
+    background:none; border:none; color:var(--cyan); font-size:12.5px;
+  }
+  #fingerprintBtn svg{ width:30px; height:30px; }
+
+  /* ---------- Chat screen ---------- */
+  #chat{ flex-direction:column; height:100%; }
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; border-bottom:1px solid var(--line); background:var(--bg2);
+  }
+  header .who{ display:flex; align-items:center; gap:10px; min-width:0; }
+  header .dot{ width:8px; height:8px; border-radius:50%; background:var(--cyan); box-shadow:0 0 8px var(--cyan); flex-shrink:0; }
+  header h2{ font-size:15.5px; margin:0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+  header .modelname{ font-size:11.5px; color:var(--text-dim); }
+  header button.icon{ background:none; border:none; color:var(--text-dim); font-size:20px; padding:6px; cursor:pointer; }
+  header .hdr-actions{ display:flex; align-items:center; gap:2px; flex-shrink:0; }
+
+  #messages{ flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .msg{ max-width:82%; padding:11px 14px; border-radius:14px; font-size:14.5px; line-height:1.5; white-space:pre-wrap; word-wrap:break-word; }
+  .msg img{ max-width:100%; border-radius:10px; display:block; margin-bottom:6px; }
+  .msg.user{ align-self:flex-end; background:var(--cyan); color:#04141a; border-bottom-right-radius:4px; }
+  .msg.ai{ align-self:flex-start; background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:4px; }
+  .msg.sys{ align-self:center; color:var(--text-dim); font-size:12.5px; background:none; }
+  .msg.err{ align-self:flex-start; background:rgba(226,84,90,0.12); border:1px solid rgba(226,84,90,0.4); color:#f2b3b6; }
+  .typing{
+    align-self:flex-start; display:flex; gap:4px; padding:12px 14px; background:var(--panel);
+    border:1px solid var(--line); border-radius:14px; border-bottom-left-radius:4px;
+  }
+  .typing span{ width:6px; height:6px; border-radius:50%; background:var(--text-dim); animation:blink 1.2s infinite ease-in-out; }
+  .typing span:nth-child(2){ animation-delay:0.2s; }
+  .typing span:nth-child(3){ animation-delay:0.4s; }
+  @keyframes blink{ 0%,80%,100%{opacity:0.3;} 40%{opacity:1;} }
+
+  #attachPreview{
+    display:none; align-items:center; gap:8px; padding:8px 12px; margin:0 12px;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; font-size:12.5px; color:var(--text-dim);
+  }
+  #attachPreview img{ width:32px; height:32px; object-fit:cover; border-radius:6px; }
+  #attachPreview .name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #attachPreview button{ background:none; border:none; color:var(--danger); font-size:15px; }
+
+  #inputRow{ display:flex; align-items:flex-end; gap:8px; padding:10px 12px; border-top:1px solid var(--line); background:var(--bg2); }
+  #attachBtn{
+    width:40px; height:40px; border-radius:50%; background:var(--panel); border:1px solid var(--line);
+    color:var(--cyan); font-size:20px; flex-shrink:0; line-height:1;
+  }
+  #inputRow textarea{
+    flex:1; resize:none; max-height:110px; background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:11px 14px; color:var(--text); font-size:14.5px; font-family:inherit; outline:none;
+  }
+  #inputRow textarea:focus{ border-color:var(--cyan); }
+  #sendBtn{
+    width:44px; height:44px; border-radius:50%; background:var(--cyan); border:none; color:#04141a;
+    font-size:18px; flex-shrink:0; cursor:pointer;
+  }
+  #sendBtn:disabled{ opacity:0.35; }
+
+  /* ---------- Bottom sheets ---------- */
+  .sheetOverlay{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:20; }
+  .sheet{
+    display:none; position:fixed; left:0; right:0; bottom:0; max-height:80vh; overflow-y:auto;
+    background:var(--bg2); border-top:1px solid var(--line); border-radius:20px 20px 0 0;
+    padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px)); z-index:21;
+    flex-direction:column; gap:14px;
+  }
+  .sheet h3{ margin:0; font-size:16px; }
+  .sheet .field label{ color:var(--text-dim); font-size:12.5px; margin-bottom:6px; display:block; }
+
+  /* Profiles list */
+  .profile-row{
+    display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px;
+    background:var(--bg); border:1px solid var(--line);
+  }
+  .profile-row.active{ background:var(--panel-active); border-color:var(--cyan); }
+  .switch{ position:relative; width:38px; height:22px; flex-shrink:0; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .switch .slider{
+    position:absolute; inset:0; background:#000; border:1px solid var(--line); border-radius:999px; transition:0.15s;
+  }
+  .switch .slider:before{
+    content:""; position:absolute; width:16px; height:16px; left:2px; top:2px;
+    background:var(--text-dim); border-radius:50%; transition:0.15s;
+  }
+  .switch input:checked + .slider{ background:#eef7f8; border-color:#eef7f8; }
+  .switch input:checked + .slider:before{ transform:translateX(16px); background:var(--cyan-dim); }
+  .profile-row .info{ flex:1; min-width:0; }
+  .profile-row .info .lbl{ font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .profile-row .info .mdl{ font-size:11.5px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .profile-row .del{ background:none; border:none; color:var(--danger); font-size:17px; flex-shrink:0; padding:4px; }
+
+  #addProfileForm{ display:none; flex-direction:column; gap:10px; }
+  .keys-header{ display:flex; align-items:center; gap:12px; }
+  .keys-header #keysCount{ font-size:13.5px; color:var(--text-dim); font-weight:600; }
+  .add-key-btn{
+    width:34px; height:34px; border-radius:50%; background:var(--panel); border:1px solid var(--line);
+    color:var(--cyan); font-size:19px; flex-shrink:0; line-height:1; cursor:pointer;
+  }
+
+  /* Chats list */
+  .chat-row{
+    display:flex; align-items:center; gap:10px; padding:12px; border-radius:12px;
+    background:var(--bg); border:1px solid var(--line);
+  }
+  .chat-row.active{ border-color:var(--cyan); }
+  .chat-row .info{ flex:1; min-width:0; }
+  .chat-row .title{ font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-row .time{ font-size:11px; color:var(--text-dim); }
+  .chat-row .del{ background:none; border:none; color:var(--danger); font-size:17px; flex-shrink:0; padding:4px; }
+</style>
+</head>
+<body>
+
+  <!-- Lock screen: PIN + fingerprint -->
+  <div id="lock">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" stroke="#45d9e8" stroke-width="1.4"/><circle cx="12" cy="12" r="3.4" stroke="#45d9e8" stroke-width="1.4"/></svg>
+    </div>
+    <div class="lock-title">PIN kodni kiriting</div>
+    <div class="pin-dots" id="pinDots"><span></span><span></span><span></span><span></span></div>
+    <div id="lockError"></div>
+    <div class="keypad" id="keypad">
+      <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+      <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+      <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+      <button class="empty"></button><button data-key="0">0</button><button class="keyback" id="pinBackspace">⌫</button>
+    </div>
+    <button id="fingerprintBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M12 3a7 7 0 0 0-7 7v2a5 5 0 0 0 1 3"/><path d="M12 3a7 7 0 0 1 7 7v3"/>
+        <path d="M8 21a5 5 0 0 0 3-4.5V10a1 1 0 1 1 2 0v9"/><path d="M16 21c.5-1 .8-2 .8-4V10"/>
+        <path d="M5 14v1a7 7 0 0 0 .8 3.2"/>
+      </svg>
+      Barmoq izi bilan kirish
+    </button>
+  </div>
+
+  <!-- Chat screen -->
+  <div id="chat">
+    <header>
+      <div class="who">
+        <div class="dot"></div>
+        <div style="min-width:0;">
+          <h2 id="chatTitle">Jarves AI</h2>
+          <div class="modelname" id="modelLabel">model</div>
+        </div>
+      </div>
+      <div class="hdr-actions">
+        <button class="icon" id="refreshBtn" title="Yangilash">⟳</button>
+        <button class="icon" id="newChatBtn" title="Suhbatlar">＋</button>
+        <button class="icon" id="settingsBtn" title="Sozlamalar">⚙</button>
+      </div>
+    </header>
+
+    <div id="messages"></div>
+
+    <div id="attachPreview">
+      <img id="attachThumb" style="display:none;">
+      <div class="name" id="attachName"></div>
+      <button id="attachRemove">✕</button>
+    </div>
+
+    <div id="inputRow">
+      <button id="attachBtn">+</button>
+      <input type="file" id="fileInput" hidden accept="image/*,.txt,.md,.json,.csv,.pdf,.docx,.xlsx,.xls">
+      <textarea id="userInput" rows="1" placeholder="Xabar yozing..."></textarea>
+      <button id="sendBtn">➤</button>
+    </div>
+  </div>
+
+  <!-- Chats list sheet -->
+  <div class="sheetOverlay" id="chatsSheetOverlay"></div>
+  <div class="sheet" id="chatsSheet">
+    <h3>Suhbatlar</h3>
+    <button class="btn small" id="createChatBtn">+ Yangi suhbat</button>
+    <div id="chatsList" style="display:flex; flex-direction:column; gap:8px;"></div>
+    <button class="btn secondary" id="chatsClose">Yopish</button>
+  </div>
+
+  <!-- Settings sheet -->
+  <div class="sheetOverlay" id="sheetOverlay"></div>
+  <div class="sheet" id="sheet">
+    <h3>Sozlamalar</h3>
+    <div class="keys-header">
+      <button class="add-key-btn" id="addProfileBtn">+</button>
+      <span id="keysCount">API kalitlar (0)</span>
+    </div>
+    <div id="profilesList" style="display:flex; flex-direction:column; gap:8px;"></div>
+    <div id="addProfileForm">
+      <input id="newLabel" type="text" placeholder="Nomi (ixtiyoriy)">
+      <input id="newKey" type="password" placeholder="API kalit" autocomplete="off" spellcheck="false">
+      <input id="newModel" type="text" placeholder="Model (masalan openrouter/free)">
+      <button class="btn small" id="saveProfileBtn">Qo'shish</button>
+    </div>
+    <div class="field">
+      <label for="sheetPin">Yangi PIN (4 raqam)</label>
+      <input id="sheetPin" type="password" inputmode="numeric" maxlength="4" placeholder="0000">
+    </div>
+    <button class="btn small" id="savePinBtn">PIN'ni saqlash</button>
+    <button class="btn secondary" id="resetAllBtn">Hammasini tozalash</button>
+    <button class="btn secondary" id="sheetClose">Yopish</button>
+  </div>
+
+<script>
+(function(){
+  function setVH(){
+    var h = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    document.documentElement.style.setProperty('--vh', (h * 0.01) + 'px');
+  }
+  setVH();
+  window.addEventListener('resize', setVH);
+  if(window.visualViewport){ window.visualViewport.addEventListener('resize', setVH); }
+
+  var DEFAULT_MODEL = "openrouter/free";
+  var K_PROFILES = "jarves_profiles";
+  var K_CHATS = "jarves_chats";
+  var K_ACTIVE_CHAT = "jarves_active_chat";
+  var K_PIN = "jarves_pin";
+  var K_CRED = "jarves_cred_id";
+  var DEFAULT_PIN = "0000";
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function safeGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function safeSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  function safeRemove(k){ try{ localStorage.removeItem(k); }catch(e){} }
+  function loadJSON(k, fallback){ try{ var r = localStorage.getItem(k); return r ? JSON.parse(r) : fallback; }catch(e){ return fallback; } }
+  function saveJSON(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+  // ---------- DOM refs ----------
+  var lock = document.getElementById('lock');
+  var chat = document.getElementById('chat');
+  var messages = document.getElementById('messages');
+  var userInput = document.getElementById('userInput');
+  var sendBtn = document.getElementById('sendBtn');
+  var modelLabel = document.getElementById('modelLabel');
+  var chatTitleEl = document.getElementById('chatTitle');
+  var settingsBtn = document.getElementById('settingsBtn');
+  var refreshBtn = document.getElementById('refreshBtn');
+  var newChatBtn = document.getElementById('newChatBtn');
+
+  var pinDots = document.getElementById('pinDots');
+  var lockError = document.getElementById('lockError');
+  var keypad = document.getElementById('keypad');
+  var pinBackspace = document.getElementById('pinBackspace');
+  var fingerprintBtn = document.getElementById('fingerprintBtn');
+
+  var sheetOverlay = document.getElementById('sheetOverlay');
+  var sheet = document.getElementById('sheet');
+  var sheetClose = document.getElementById('sheetClose');
+  var profilesList = document.getElementById('profilesList');
+  var keysCount = document.getElementById('keysCount');
+  var addProfileBtn = document.getElementById('addProfileBtn');
+  var addProfileForm = document.getElementById('addProfileForm');
+  var newLabel = document.getElementById('newLabel');
+  var newKey = document.getElementById('newKey');
+  var newModel = document.getElementById('newModel');
+  var saveProfileBtn = document.getElementById('saveProfileBtn');
+  var sheetPin = document.getElementById('sheetPin');
+  var savePinBtn = document.getElementById('savePinBtn');
+  var resetAllBtn = document.getElementById('resetAllBtn');
+
+  var chatsSheetOverlay = document.getElementById('chatsSheetOverlay');
+  var chatsSheet = document.getElementById('chatsSheet');
+  var chatsClose = document.getElementById('chatsClose');
+  var chatsList = document.getElementById('chatsList');
+  var createChatBtn = document.getElementById('createChatBtn');
+
+  var attachBtn = document.getElementById('attachBtn');
+  var fileInput = document.getElementById('fileInput');
+  var attachPreview = document.getElementById('attachPreview');
+  var attachThumb = document.getElementById('attachThumb');
+  var attachName = document.getElementById('attachName');
+  var attachRemove = document.getElementById('attachRemove');
+
+  var pendingAttachment = null; // {type:'image'|'text', dataUrl?, content?, name}
+
+  // ---------- Data ----------
+  function getProfiles(){ return loadJSON(K_PROFILES, []); }
+  function setProfiles(list){ saveJSON(K_PROFILES, list); }
+  function getActiveProfile(){
+    var list = getProfiles();
+    for(var i=0;i<list.length;i++){ if(list[i].active) return list[i]; }
+    return list[0] || null;
+  }
+  function getChats(){ return loadJSON(K_CHATS, []); }
+  function setChats(list){ saveJSON(K_CHATS, list); }
+  function getActiveChatId(){ return safeGet(K_ACTIVE_CHAT); }
+  function setActiveChatId(id){ safeSet(K_ACTIVE_CHAT, id); }
+  function getChatById(id){
+    var list = getChats();
+    for(var i=0;i<list.length;i++){ if(list[i].id === id) return list[i]; }
+    return null;
+  }
+  function saveChat(chatObj){
+    var list = getChats();
+    for(var i=0;i<list.length;i++){
+      if(list[i].id === chatObj.id){ list[i] = chatObj; setChats(list); return; }
+    }
+    list.push(chatObj);
+    setChats(list);
+  }
+  function createChat(){
+    var c = { id: uid(), title: "Yangi suhbat", messages: [], createdAt: Date.now() };
+    saveChat(c);
+    return c;
+  }
+
+  // ---------- Rendering messages ----------
+  function addMessage(role, text, imgDataUrl){
+    var el = document.createElement('div');
+    el.className = 'msg ' + role;
+    if(imgDataUrl){
+      var img = document.createElement('img');
+      img.src = imgDataUrl;
+      el.appendChild(img);
+    }
+    if(text){
+      var t = document.createElement('div');
+      t.textContent = text;
+      el.appendChild(t);
+    }
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+    return el;
+  }
+  function showTyping(){
+    var el = document.createElement('div');
+    el.className = 'typing'; el.id = 'typingIndicator';
+    el.innerHTML = '<span></span><span></span><span></span>';
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+  }
+  function hideTyping(){
+    var el = document.getElementById('typingIndicator');
+    if(el) el.remove();
+  }
+
+  function renderActiveChat(){
+    messages.innerHTML = '';
+    var chatId = getActiveChatId();
+    var c = chatId ? getChatById(chatId) : null;
+    if(!c){
+      c = createChat();
+      setActiveChatId(c.id);
+    }
+    chatTitleEl.textContent = c.title || "Jarves AI";
+    var prof = getActiveProfile();
+    modelLabel.textContent = prof ? prof.model : DEFAULT_MODEL;
+    if(c.messages.length === 0){
+      if(getActiveProfile()){
+        addMessage('sys', 'Ulandi. Savolingizni yozing.');
+      } else {
+        addMessage('sys', 'Avval API kalit qo\'shing: ⚙ Sozlamalar → + Yangi API');
+      }
+    } else {
+      c.messages.forEach(function(m){
+        var role = m.role === 'user' ? 'user' : 'ai';
+        var imgUrl = null, txt = m.content;
+        if(Array.isArray(m.content)){
+          txt = '';
+          m.content.forEach(function(part){
+            if(part.type === 'text') txt += part.text;
+            if(part.type === 'image_url') imgUrl = part.image_url.url;
+          });
+        }
+        addMessage(role, txt, imgUrl);
+      });
+    }
+  }
+
+  function openChatScreen(){
+    lock.style.display = 'none';
+    chat.style.display = 'flex';
+    renderActiveChat();
+    if(!getActiveProfile()){
+      setTimeout(openSheet, 300);
+    }
+  }
+
+  // ---------- PIN lock ----------
+  var pinBuffer = "";
+  function renderPinDots(){
+    var dots = pinDots.children;
+    for(var i=0;i<dots.length;i++){ dots[i].className = i < pinBuffer.length ? 'filled' : ''; }
+  }
+  function showLockError(msg){
+    lockError.textContent = msg;
+    pinDots.classList.add('shake');
+    setTimeout(function(){ pinDots.classList.remove('shake'); }, 400);
+  }
+  function checkPin(){
+    var savedPin = safeGet(K_PIN) || DEFAULT_PIN;
+    if(pinBuffer === savedPin){
+      pinBuffer = ""; lockError.textContent = ""; renderPinDots();
+      openChatScreen();
+    } else {
+      showLockError("Noto'g'ri PIN");
+      pinBuffer = "";
+      setTimeout(renderPinDots, 300);
+    }
+  }
+  keypad.addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-key]');
+    if(!btn) return;
+    if(pinBuffer.length >= 4) return;
+    pinBuffer += btn.getAttribute('data-key');
+    lockError.textContent = "";
+    renderPinDots();
+    if(pinBuffer.length === 4){ setTimeout(checkPin, 120); }
+  });
+  pinBackspace.addEventListener('click', function(){
+    pinBuffer = pinBuffer.slice(0, -1);
+    renderPinDots();
+  });
+  function showLock(){
+    chat.style.display = 'none';
+    lock.style.display = 'flex';
+    pinBuffer = "";
+    renderPinDots();
+    lockError.textContent = "";
+    setupFingerprintButton();
+  }
+
+  // ---------- Fingerprint ----------
+  function bufToBase64(buf){
+    var bytes = new Uint8Array(buf), str = '';
+    for(var i=0;i<bytes.length;i++){ str += String.fromCharCode(bytes[i]); }
+    return btoa(str);
+  }
+  function base64ToBuf(b64){
+    var str = atob(b64), bytes = new Uint8Array(str.length);
+    for(var i=0;i<str.length;i++){ bytes[i] = str.charCodeAt(i); }
+    return bytes.buffer;
+  }
+  function randomBuf(len){
+    var arr = new Uint8Array(len);
+    if(window.crypto && crypto.getRandomValues){ crypto.getRandomValues(arr); }
+    return arr;
+  }
+  function webAuthnAvailable(){ return !!(window.PublicKeyCredential && navigator.credentials); }
+  async function setupFingerprintButton(){
+    fingerprintBtn.style.display = 'none';
+    if(!webAuthnAvailable()) return;
+    try{
+      if(PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable){
+        var ok = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if(ok){ fingerprintBtn.style.display = 'flex'; }
+      }
+    }catch(e){}
+  }
+  async function enrollFingerprint(){
+    var userId = randomBuf(16);
+    var cred = await navigator.credentials.create({
+      publicKey:{
+        challenge: randomBuf(32), rp:{ name:"Jarves AI" },
+        user:{ id:userId, name:"jarves-user", displayName:"Jarves AI" },
+        pubKeyCredParams:[{ type:"public-key", alg:-7 }, { type:"public-key", alg:-257 }],
+        authenticatorSelection:{ authenticatorAttachment:"platform", userVerification:"required" },
+        timeout:60000
+      }
+    });
+    if(cred){ safeSet(K_CRED, bufToBase64(cred.rawId)); }
+    return cred;
+  }
+  async function verifyFingerprint(credIdB64){
+    return navigator.credentials.get({
+      publicKey:{
+        challenge: randomBuf(32),
+        allowCredentials:[{ id: base64ToBuf(credIdB64), type:"public-key" }],
+        userVerification:"required", timeout:60000
+      }
+    });
+  }
+  fingerprintBtn.addEventListener('click', async function(){
+    try{
+      var storedCred = safeGet(K_CRED);
+      if(storedCred){ await verifyFingerprint(storedCred); } else { await enrollFingerprint(); }
+      pinBuffer = ""; renderPinDots();
+      openChatScreen();
+    }catch(e){ showLockError("Barmoq izi tanilmadi"); }
+  });
+
+  // ---------- Sending messages ----------
+  async function sendMessage(){
+    var text = userInput.value.trim();
+    var profile = getActiveProfile();
+    if((!text && !pendingAttachment) || !profile) return;
+
+    var chatId = getActiveChatId();
+    var c = getChatById(chatId);
+    if(!c){ c = createChat(); setActiveChatId(c.id); }
+
+    var userContent;
+    var displayImg = null;
+    if(pendingAttachment && pendingAttachment.type === 'image'){
+      userContent = [];
+      if(text) userContent.push({ type:'text', text:text });
+      userContent.push({ type:'image_url', image_url:{ url: pendingAttachment.dataUrl } });
+      displayImg = pendingAttachment.dataUrl;
+    } else if(pendingAttachment && pendingAttachment.type === 'text'){
+      var merged = (text ? text + "\n\n" : "") + "[Fayl: " + pendingAttachment.name + "]\n" + pendingAttachment.content;
+      userContent = merged;
+    } else {
+      userContent = text;
+    }
+
+    addMessage('user', typeof userContent === 'string' ? userContent : text, displayImg);
+    c.messages.push({ role:'user', content:userContent });
+    if(c.messages.length === 1){
+      var titleSrc = text || (pendingAttachment ? pendingAttachment.name : "Suhbat");
+      c.title = titleSrc.slice(0, 30);
+      chatTitleEl.textContent = c.title;
+    }
+    saveChat(c);
+    clearAttachment();
+
+    userInput.value = '';
+    userInput.style.height = 'auto';
+    sendBtn.disabled = true;
+    showTyping();
+
+    try{
+      var res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + profile.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: profile.model, messages: c.messages })
+      });
+      var data = await res.json();
+      hideTyping();
+      if(!res.ok){
+        var errMsg = (data && data.error && data.error.message) ? data.error.message : ('Xatolik: ' + res.status);
+        addMessage('err', errMsg);
+        return;
+      }
+      var reply = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if(reply){
+        addMessage('ai', reply);
+        c.messages.push({ role:'assistant', content:reply });
+        saveChat(c);
+      } else {
+        addMessage('err', "Javob olinmadi. Qayta urinib ko'ring.");
+      }
+    }catch(e){
+      hideTyping();
+      addMessage('err', 'Ulanishda xatolik: ' + e.message);
+    }finally{
+      sendBtn.disabled = false;
+    }
+  }
+  sendBtn.addEventListener('click', sendMessage);
+  userInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+  });
+  userInput.addEventListener('input', function(){
+    userInput.style.height = 'auto';
+    userInput.style.height = Math.min(userInput.scrollHeight, 110) + 'px';
+  });
+  userInput.addEventListener('focus', function(){
+    setTimeout(function(){
+      messages.scrollTop = messages.scrollHeight;
+      userInput.scrollIntoView({block:'end'});
+    }, 300);
+  });
+
+  // ---------- File attach ----------
+  function clearAttachment(){
+    pendingAttachment = null;
+    attachPreview.style.display = 'none';
+    attachThumb.style.display = 'none';
+    fileInput.value = '';
+  }
+  attachBtn.addEventListener('click', function(){ fileInput.click(); });
+  attachRemove.addEventListener('click', clearAttachment);
+
+  function showAttachLoading(name){
+    pendingAttachment = null;
+    attachThumb.style.display = 'none';
+    attachName.textContent = name + " — o'qilmoqda...";
+    attachPreview.style.display = 'flex';
+  }
+  function finishAttachText(name, text){
+    pendingAttachment = { type:'text', content: text.slice(0, 8000), name: name };
+    attachName.textContent = name;
+  }
+  function attachFailed(name, msg){
+    attachName.textContent = name + " — " + msg;
+    pendingAttachment = null;
+  }
+
+  async function readPdf(file){
+    if(!window.pdfjsLib){ throw new Error("PDF kutubxonasi yuklanmadi"); }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    var buf = await file.arrayBuffer();
+    var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    var text = '';
+    var maxPages = Math.min(pdf.numPages, 30);
+    for(var i=1;i<=maxPages;i++){
+      var page = await pdf.getPage(i);
+      var content = await page.getTextContent();
+      text += content.items.map(function(it){ return it.str; }).join(' ') + '\n\n';
+    }
+    return text;
+  }
+  async function readDocx(file){
+    if(!window.mammoth){ throw new Error("DOCX kutubxonasi yuklanmadi"); }
+    var buf = await file.arrayBuffer();
+    var result = await mammoth.extractRawText({ arrayBuffer: buf });
+    return result.value;
+  }
+  async function readSheet(file){
+    if(!window.XLSX){ throw new Error("Excel kutubxonasi yuklanmadi"); }
+    var buf = await file.arrayBuffer();
+    var wb = XLSX.read(buf, { type: 'array' });
+    var out = '';
+    wb.SheetNames.forEach(function(name){
+      out += "# " + name + "\n" + XLSX.utils.sheet_to_csv(wb.Sheets[name]) + "\n\n";
+    });
+    return out;
+  }
+
+  fileInput.addEventListener('change', function(){
+    var file = fileInput.files[0];
+    if(!file) return;
+    var lower = file.name.toLowerCase();
+
+    if(file.type.startsWith('image/')){
+      var reader = new FileReader();
+      reader.onload = function(){
+        pendingAttachment = { type:'image', dataUrl: reader.result, name: file.name };
+        attachThumb.src = reader.result;
+        attachThumb.style.display = 'block';
+        attachName.textContent = file.name;
+        attachPreview.style.display = 'flex';
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    if(lower.endsWith('.pdf')){
+      showAttachLoading(file.name);
+      readPdf(file).then(function(text){ finishAttachText(file.name, text); })
+        .catch(function(e){ attachFailed(file.name, "o'qib bo'lmadi"); });
+      return;
+    }
+    if(lower.endsWith('.docx')){
+      showAttachLoading(file.name);
+      readDocx(file).then(function(text){ finishAttachText(file.name, text); })
+        .catch(function(e){ attachFailed(file.name, "o'qib bo'lmadi"); });
+      return;
+    }
+    if(lower.endsWith('.xlsx') || lower.endsWith('.xls')){
+      showAttachLoading(file.name);
+      readSheet(file).then(function(text){ finishAttachText(file.name, text); })
+        .catch(function(e){ attachFailed(file.name, "o'qib bo'lmadi"); });
+      return;
+    }
+
+    // Plain text fallback: .txt, .md, .json, .csv, etc.
+    var reader2 = new FileReader();
+    reader2.onload = function(){
+      var content = reader2.result.slice(0, 8000);
+      pendingAttachment = { type:'text', content: content, name: file.name };
+      attachThumb.style.display = 'none';
+      attachName.textContent = file.name;
+      attachPreview.style.display = 'flex';
+    };
+    reader2.readAsText(file);
+  });
+
+  // ---------- Header actions ----------
+  refreshBtn.addEventListener('click', function(){ window.location.reload(); });
+  newChatBtn.addEventListener('click', openChatsSheet);
+
+  // ---------- Chats sheet ----------
+  function renderChatsList(){
+    var list = getChats().slice().sort(function(a,b){ return b.createdAt - a.createdAt; });
+    var activeId = getActiveChatId();
+    chatsList.innerHTML = '';
+    list.forEach(function(c){
+      var row = document.createElement('div');
+      row.className = 'chat-row' + (c.id === activeId ? ' active' : '');
+      var info = document.createElement('div');
+      info.className = 'info';
+      var title = document.createElement('div');
+      title.className = 'title';
+      title.textContent = c.title || 'Suhbat';
+      var time = document.createElement('div');
+      time.className = 'time';
+      time.textContent = new Date(c.createdAt).toLocaleString();
+      info.appendChild(title); info.appendChild(time);
+      var del = document.createElement('button');
+      del.className = 'del'; del.textContent = '✕';
+      del.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        var all = getChats().filter(function(x){ return x.id !== c.id; });
+        setChats(all);
+        if(activeId === c.id){
+          if(all.length){ setActiveChatId(all[0].id); }
+          else { var nc = createChat(); setActiveChatId(nc.id); }
+        }
+        renderChatsList();
+      });
+      row.appendChild(info); row.appendChild(del);
+      row.addEventListener('click', function(){
+        setActiveChatId(c.id);
+        closeChatsSheet();
+        renderActiveChat();
+      });
+      chatsList.appendChild(row);
+    });
+  }
+  function openChatsSheet(){
+    renderChatsList();
+    chatsSheetOverlay.style.display = 'block';
+    chatsSheet.style.display = 'flex';
+  }
+  function closeChatsSheet(){
+    chatsSheetOverlay.style.display = 'none';
+    chatsSheet.style.display = 'none';
+  }
+  chatsSheetOverlay.addEventListener('click', closeChatsSheet);
+  chatsClose.addEventListener('click', closeChatsSheet);
+  createChatBtn.addEventListener('click', function(){
+    var c = createChat();
+    setActiveChatId(c.id);
+    closeChatsSheet();
+    renderActiveChat();
+  });
+
+  // ---------- Settings sheet: profiles ----------
+  function renderProfilesList(){
+    var list = getProfiles();
+    keysCount.textContent = "API kalitlar (" + list.length + ")";
+    profilesList.innerHTML = '';
+    list.forEach(function(p){
+      var row = document.createElement('div');
+      row.className = 'profile-row' + (p.active ? ' active' : '');
+      var sw = document.createElement('label');
+      sw.className = 'switch';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = !!p.active;
+      var slider = document.createElement('span'); slider.className = 'slider';
+      sw.appendChild(cb); sw.appendChild(slider);
+      cb.addEventListener('change', function(){
+        var all = getProfiles();
+        all.forEach(function(x){ x.active = (x.id === p.id) ? cb.checked : false; });
+        setProfiles(all);
+        renderProfilesList();
+        modelLabel.textContent = (getActiveProfile() || {}).model || DEFAULT_MODEL;
+      });
+      var info = document.createElement('div');
+      info.className = 'info';
+      var lbl = document.createElement('div'); lbl.className = 'lbl';
+      lbl.textContent = p.label || p.model || 'API';
+      var mdl = document.createElement('div'); mdl.className = 'mdl';
+      mdl.textContent = p.model;
+      info.appendChild(lbl); info.appendChild(mdl);
+      var del = document.createElement('button');
+      del.className = 'del'; del.textContent = '✕';
+      del.addEventListener('click', function(){
+        var all = getProfiles().filter(function(x){ return x.id !== p.id; });
+        if(p.active && all.length){ all[0].active = true; }
+        setProfiles(all);
+        renderProfilesList();
+        modelLabel.textContent = (getActiveProfile() || {}).model || DEFAULT_MODEL;
+      });
+      row.appendChild(sw); row.appendChild(info); row.appendChild(del);
+      profilesList.appendChild(row);
+    });
+  }
+  addProfileBtn.addEventListener('click', function(){
+    addProfileForm.style.display = addProfileForm.style.display === 'flex' ? 'none' : 'flex';
+  });
+  saveProfileBtn.addEventListener('click', function(){
+    var k = newKey.value.trim();
+    if(!k) return;
+    var m = newModel.value.trim() || DEFAULT_MODEL;
+    var l = newLabel.value.trim();
+    var all = getProfiles();
+    var makeActive = all.length === 0;
+    if(makeActive){ /* first one becomes active */ }
+    all.forEach(function(x){ if(makeActive) x.active = false; });
+    all.push({ id: uid(), label: l, key: k, model: m, active: makeActive });
+    setProfiles(all);
+    newLabel.value = ''; newKey.value = ''; newModel.value = '';
+    addProfileForm.style.display = 'none';
+    renderProfilesList();
+    modelLabel.textContent = (getActiveProfile() || {}).model || DEFAULT_MODEL;
+  });
+
+  function openSheet(){
+    renderProfilesList();
+    sheetOverlay.style.display = 'block';
+    sheet.style.display = 'flex';
+  }
+  function closeSheet(){
+    sheetOverlay.style.display = 'none';
+    sheet.style.display = 'none';
+  }
+  settingsBtn.addEventListener('click', openSheet);
+  sheetOverlay.addEventListener('click', closeSheet);
+  sheetClose.addEventListener('click', closeSheet);
+
+  savePinBtn.addEventListener('click', function(){
+    var p = sheetPin.value.trim();
+    if(p.length === 4 && /^[0-9]{4}$/.test(p)){
+      safeSet(K_PIN, p);
+      sheetPin.value = '';
+    }
+  });
+
+  resetAllBtn.addEventListener('click', function(){
+    safeRemove(K_PROFILES); safeRemove(K_CHATS); safeRemove(K_ACTIVE_CHAT);
+    safeRemove(K_PIN); safeRemove(K_CRED);
+    closeSheet();
+    window.location.reload();
+  });
+
+  // ---------- Boot ----------
+  showLock();
+})();
+</script>
+</body>
+</html>
